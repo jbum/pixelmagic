@@ -77,7 +77,9 @@ class QTSShaderPlayer {
     this._last = performance.now(); this._fpsTime = this._last; this._frames = 0;
     const step = (now) => {
       if (!this.playing) return;
-      this.time = (this.time + (now - this._last) / 1000 * this.speed) % this.duration;
+      // rAF's timestamp can precede the performance.now() taken when play() was called
+      const d = this.duration;
+      this.time = (((this.time + Math.max(0, now - this._last) / 1000 * this.speed) % d) + d) % d;
       this._last = now;
       this.draw();
       if (++this._frames >= 20) { this.fps = 1000 * this._frames / (now - this._fpsTime); this._fpsTime = now; this._frames = 0; }

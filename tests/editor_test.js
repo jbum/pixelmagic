@@ -111,7 +111,7 @@ function compare(a, b, label, limitPct = 1) {
 
   // Save frame (PNG) in the shader view, paused at the middle: the renderer's frame round(.5*(n-1))
   await evaluate(`(() => { const s = document.querySelector("#time"); s.value = "0.5"; s.dispatchEvent(new Event("input")); return true; })()`);
-  check(await evaluate(`document.querySelector("#shaderPlay").textContent`) === "Play", "moving the slider pauses the shader");
+  check(await evaluate(`document.querySelector("#shaderPlay").textContent`) === "▶", "moving the slider pauses the shader");
   const midFrame = Math.min(frames - 1, Math.round(0.5 * (frames - 1)));
   let got = nextFile();
   await evaluate(`document.querySelector("#savePng").click(); true`);

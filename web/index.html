@@ -18,13 +18,13 @@
 <header>
   <h1><a href="./">QTS</a> <small>Pixel Magic in the browser</small></h1>
   <nav>
-    <select id="examples"><option value="">Examples…</option></select>
-    <button id="gallery-open">Gallery</button>
+    <button id="gallery-open">Examples</button>
     <button id="new">New</button>
-    <button id="open">Open…</button>
-    <button id="save">Save</button>
-    <button id="images" title="Add images for image=&quot;…&quot;">Images…</button>
-    <button id="help">Language</button>
+    <button id="open" title="a .can script from your computer">Open…</button>
+    <button id="save" title="download the script">Save</button>
+    <button id="images" title="add image files the script refers to with image=&quot;…&quot;">Images…</button>
+    <button id="help" title="the script language, every property and function">Language</button>
+    <button id="tips" title="what everything here does" aria-label="help">?</button>
     <a class="about" href="about.html">About</a>
   </nav>
 </header>
@@ -46,17 +46,16 @@
     </div>
     <div class="canvasWrap"><canvas id="preview" width="256" height="256"></canvas><canvas id="glview" width="256" height="256" hidden></canvas></div>
     <div class="timeRow">
+      <button id="shaderPlay" class="icon" title="pause / play (or click the picture)" aria-label="pause">❚❚</button>
       <input type="range" id="time" min="0" max="1" step="0.0005" value="0" aria-label="time">
       <span id="timeText"></span>
     </div>
     <div class="row controls">
-      <label><input type="checkbox" id="autoRender" checked> render as the slider moves</label>
       <label>size <input id="width" type="number" min="1" max="4096" placeholder="w"> × <input id="height" type="number" min="1" max="4096" placeholder="h">
         <button id="sizeReset" title="back to the script's fw/fh">↺</button></label>
     </div>
     <div class="row" id="shaderButtons" hidden>
-      <button id="shaderPlay" class="primary">Pause</button>
-      <label><input type="checkbox" id="shaderOversample" checked> oversample</label>
+      <label title="2×2 samples per pixel where the script asks; off is four times faster"><input type="checkbox" id="shaderOversample" checked> oversample</label>
       <button id="saveShaderHtml" title="a page that plays the loop, with the shader and images inside">Save shader (HTML)</button>
       <button id="saveShaderGlsl" title="the fragment shader alone, in Shadertoy's dialect">Save GLSL</button>
       <span id="shaderFps" class="dim"></span>
@@ -106,6 +105,26 @@
   </p>
   <p class="hint" id="movieHint"></p>
   <p class="buttons"><button id="movieClose">Cancel</button> <button id="movieGo" class="primary">Render</button></p>
+</dialog>
+
+<dialog id="tipsDialog">
+  <h2>Tips</h2>
+  <ul class="tips">
+    <li><b>Live shader</b> compiles the script to GLSL and plays it on the GPU, looping; edits show as you type.
+      <b>Frame</b> renders one frame with the original engine on every core: exact, and the one for a weak GPU.</li>
+    <li>Click the picture to pause and play. The slider scrubs; in the shader view it pauses.
+      <kbd>⌘</kbd>/<kbd>Ctrl</kbd>+<kbd>Enter</kbd> runs, <kbd>Tab</kbd> indents.</li>
+    <li><b>size</b> is the picture, frame and movie size; empty, or ↺, means the script's own <code>fw</code>×<code>fh</code>.</li>
+    <li><b>oversample</b> keeps the script's 2×2 supersampling; off is four times faster.</li>
+    <li><b>Render movie…</b> makes an MP4 (H.264) or a zip of PNG frames, drawn by the shader unless you pick the
+      original renderer. <b>Save frame</b> saves the current picture.</li>
+    <li><b>Save shader (HTML)</b> is a page that plays the loop by itself, images included.
+      <b>Save GLSL</b> is the fragment shader in Shadertoy's dialect: paste it there, with the images in its channels.</li>
+    <li><b>Images…</b> adds image files a script refers to with <code>image="name"</code>; the examples' images are here already.</li>
+    <li>The script stays in this browser between visits; <b>Save</b> downloads it. The shader is 32-bit float, so
+      very deep fractal zooms need the Frame view.</li>
+  </ul>
+  <p class="buttons"><button id="tipsClose" class="primary">OK</button></p>
 </dialog>
 
 <input type="file" id="openFile" accept=".can,.txt,text/plain" hidden>

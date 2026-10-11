@@ -93,6 +93,13 @@ See README.md for the layout; this file is what isn't obvious from the code.
   jbum's iPad struggled with the shader tab while Frame was the default; with the shader as the
   default (no wasm workers rendering at the same time) "shaders work great on iPad now"
   (2026-10-11). Likely the CPU render competing, not the GPU — not proven.
+- About page (2026-10-11, "Let's shader version in about"): `web/etude.js` fetches noiseetude.can, compiles
+  it in the browser and plays it on a canvas after a click (poster + play button first; the MP4 stays as
+  the fallback and behind "watch the movie instead"). Home page trimmed the same day (jbum: "Are there
+  buttons that could be removed?"): no Examples dropdown (the gallery button is "Examples"), pause is an
+  icon by the slider plus a click on the picture, no "render as the slider moves" checkbox, and a "?"
+  tips dialog holds the explanations. `scratchpad/shader/about_test.js`-style checks: headless Chrome on
+  Metal, click play, read `window.etude`.
 - Ideas: a Shadertoy-style "share" link; GPU movie rendering at sizes above the canvas limit.
 - The site has no social card yet beyond `assets/card.png` made by build_web.py (the sun example +
   title); jbum may want a nicer one.

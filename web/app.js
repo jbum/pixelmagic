@@ -100,7 +100,7 @@ const state = {
 const ui = {
   editor: $("#editor"), canvas: $("#preview"), slider: $("#time"), timeText: $("#timeText"),
   log: $("#log"), name: $("#name"), status: $("#status"), progress: $("#progress"),
-  width: $("#width"), height: $("#height"), auto: $("#autoRender"),
+  width: $("#width"), height: $("#height"),
   glview: $("#glview"), shaderPlay: $("#shaderPlay"), shaderFps: $("#shaderFps"), shaderOversample: $("#shaderOversample"),
 };
 
@@ -272,13 +272,12 @@ let sliderTimer = null;
 function onSlider() {
   state.frac = parseFloat(ui.slider.value);
   if (state.view === "shader") {
-    if (player && state.shader) { player.pause(); ui.shaderPlay.textContent = "Play"; player.seek(state.frac * player.duration); }
+    if (player && state.shader) { player.pause(); showPlayState(); player.seek(state.frac * player.duration); }
     save();
     return;
   }
   updateTimeText();
   save();
-  if (!ui.auto.checked) return;
   clearTimeout(sliderTimer);
   sliderTimer = setTimeout(renderPreview, 120);
 }
@@ -375,7 +374,7 @@ async function renderMovie(opts) {
   const drawFrames = async () => {
     const p = getPlayer();
     const wasPlaying = p.playing;
-    p.pause();
+    p.pause(); showPlayState();
     p.setSize(w, h);
     try {
       for (let f = first; f <= last && !state.movie.cancel; ++f) {
@@ -390,6 +389,7 @@ async function renderMovie(opts) {
     const size = outputSize();
     p.setSize(size.w, size.h);
     if (wasPlaying && state.view === "shader") p.play(); else if (state.view === "shader") p.draw();
+    showPlayState();
     finish();
   };
 
@@ -599,7 +599,19 @@ async function showShader() {
   p.setSize(w, h);
   p.seek(state.frac * p.duration);
   p.play();
-  ui.shaderPlay.textContent = "Pause";
+  showPlayState();
+}
+
+function showPlayState() {
+  const playing = !!(player && player.playing);
+  ui.shaderPlay.textContent = playing ? "❚❚" : "▶";
+  ui.shaderPlay.setAttribute("aria-label", playing ? "pause" : "play");
+}
+
+function togglePlay() {
+  if (!player || !state.shader) { showShader(); return; }
+  if (player.playing) player.pause(); else player.play();
+  showPlayState();
 }
 
 let shaderTimer = null;
@@ -620,7 +632,7 @@ function showTabs() {
   $("#tabShader").classList.toggle("on", shader);
   ui.canvas.hidden = shader; ui.glview.hidden = !shader;
   $("#shaderButtons").hidden = !shader;
-  ui.auto.parentElement.hidden = shader;
+  ui.shaderPlay.hidden = !shader;
   $("#render").textContent = shader ? "Run shader" : "Render frame";
 }
 
@@ -673,14 +685,6 @@ async function loadExamples() {
     const r = await fetch("examples/index.json");
     state.examples = await r.json();
   } catch (_) { state.examples = []; }
-  const menu = $("#examples");
-  menu.innerHTML = '<option value="">Examples…</option>';
-  for (const ex of state.examples) {
-    const o = document.createElement("option");
-    o.value = ex.file;
-    o.textContent = ex.file.replace(/\.can$/, "") + (ex.frames > 1 ? ` (${ex.duration}s)` : "");
-    menu.appendChild(o);
-  }
   const grid = $("#gallery");
   if (grid) {
     grid.innerHTML = "";
@@ -740,10 +744,10 @@ function wire() {
   $("#render").onclick = refresh;
   $("#tabFrame").onclick = () => setView("frame");
   $("#tabShader").onclick = () => setView("shader");
-  ui.shaderPlay.onclick = () => {
-    if (!player || !state.shader) { showShader(); return; }
-    if (player.playing) { player.pause(); ui.shaderPlay.textContent = "Play"; } else { player.play(); ui.shaderPlay.textContent = "Pause"; }
-  };
+  ui.shaderPlay.onclick = togglePlay;
+  ui.glview.onclick = togglePlay;
+  $("#tips").onclick = () => $("#tipsDialog").showModal();
+  $("#tipsClose").onclick = () => $("#tipsDialog").close();
   ui.shaderOversample.onchange = () => { if (state.shader) { state.shader.text = null; showShader(); } };
   $("#saveShaderHtml").onclick = () => saveShaderHtml().catch((e) => log("save: " + e.message, "err"));
   $("#saveShaderGlsl").onclick = () => saveShaderGlsl().catch((e) => log("save: " + e.message, "err"));
@@ -776,7 +780,6 @@ function wire() {
     if (state.view === "shader" && player) { const { w, h } = outputSize(); player.setSize(w, h); if (!player.playing) player.draw(); } });
   $("#sizeReset").onclick = () => { ui.width.dataset.auto = "1"; ui.height.dataset.auto = "1";
     if (state.info) { ui.width.value = state.info.width; ui.height.value = state.info.height; } save(); };
-  $("#examples").onchange = (e) => { if (e.target.value) openExample(e.target.value); e.target.value = ""; };
   $("#gallery-open").onclick = openGallery;
   $("#galleryClose").onclick = closeGallery;
   $("#new").onclick = () => {
