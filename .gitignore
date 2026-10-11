@@ -1,0 +1,7 @@
+obj/
+qts
+build/web/
+build/wasm-*/
+*.dSYM
+.DS_Store
+node_modules/
