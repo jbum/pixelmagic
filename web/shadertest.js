@@ -1,6 +1,7 @@
 // shadertest.js -- compares every example's compiled shader with the JS engine's frame.
 // ?run starts at once; ?k=regex filters; ?list=a.can,b.can names the scripts (else examples/index.json);
-// ?base=/examples/ serves them from elsewhere; ?max=128 caps the longer side (both engines scale alike).
+// ?base=/examples/ serves them from elsewhere; ?max=128 caps the longer side (both engines scale alike);
+// ?frac=0.95 picks the moment compared (default the middle); ?speed times 8 draws at the script's size.
 // Results in window.results, title "ready" when done.
 import { Script } from "./engine/seq.js";
 import { Renderer } from "./engine/renderer.js";
@@ -55,11 +56,12 @@ async function run() {
       const maxSide = parseInt(params.get("max") || "0", 10);
       if (maxSide > 0 && Math.max(w, h) > maxSide) { const k = maxSide / Math.max(w, h); w = Math.max(1, Math.round(w * k)); h = Math.max(1, Math.round(h * k)); }
       const n = Math.max(1, script.nbrFrames);
-      const frame = n <= 1 ? 0 : Math.min(n - 1, Math.round(0.5 * (n - 1)));
-      const time = n <= 1 ? 0.5 * script.duration : frame / n * script.duration;
+      const frac = parseFloat(params.get("frac") || "0.5");
+      const frame = n <= 1 ? 0 : Math.min(n - 1, Math.round(frac * (n - 1)));
+      const time = n <= 1 ? frac * script.duration : frame / n * script.duration;
       // JS
       const jsOut = new Uint8ClampedArray(w * h * 4);
-      new Renderer(script, w, h).renderFrame(frame, n, 0.5, jsOut);
+      new Renderer(script, w, h).renderFrame(frame, n, frac, jsOut);
       // GLSL
       const g = compileScriptToGLSL(script);
       row.glslKB = Math.round(g.source.length / 1024);
@@ -78,10 +80,23 @@ async function run() {
       let sum = 0; for (let i = 0; i < px.length; i += 4) sum += px[i] + px[i + 1] + px[i + 2];
       row.mean = Math.round(sum / (w * h * 3)); row.lost = player.gl.isContextLost();
       row.ok = row.bigPct < 1;
+      if (params.has("speed")) {
+        // draws at the script's own size, pixels read back so the GPU has to finish each one
+        player.setSize(script.frameWidth, script.frameHeight);
+        player.draw(time); player.pixels();
+        const t1 = performance.now();
+        for (let i = 1; i <= 8; ++i) { player.draw(time + i * 0.01); player.pixels(); }
+        row.fps = +(8000 / (performance.now() - t1)).toFixed(1);
+      }
       if (row.ok) ok++; else bad++;
-      addRow(row, `${w}×${h}`, g.warnings.join("; "));
+      addRow(row, `${w}×${h}`, (row.fps ? row.fps + " fps at " + script.frameWidth + "×" + script.frameHeight + " " : "") + g.warnings.join("; "));
       console.log("RESULT " + JSON.stringify(row));
       if (!row.ok || params.has("pics")) showPics(ex.file, jsOut, px, w, h);
+      if (params.has("dump")) for (const [tag, pix] of [["js", jsOut], ["gl", px]]) {
+        const c = document.createElement("canvas"); c.width = w; c.height = h;
+        c.getContext("2d").putImageData(new ImageData(pix, w, h), 0, 0);
+        console.log("PNG " + ex.file.replace(/\.can$/, "") + "_" + tag + " " + c.toDataURL("image/png"));
+      }
     } catch (e) {
       failed++; row.error = e.message;
       addRow(row, "", e.message);

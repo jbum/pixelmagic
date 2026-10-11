@@ -1,9 +1,13 @@
-// QTS in the browser: the script editor, preview and movie renderer.
+// QTS in the browser: the script editor, the live shader, the frame preview and the
+// movie renderer.
 //
-// Rendering happens in a pool of workers (worker.js), each with its own qts.wasm
-// instance and copy of the compiled script. A preview frame is split into row bands
-// across the pool; a movie hands whole frames to whichever worker is idle and encodes
-// them in order (MP4 through WebCodecs + mp4-muxer, or PNG frames in a zip).
+// The default view compiles the script to GLSL (engine/glsl.js) and plays it on the GPU
+// (shader.js). The Frame view and the "exact" movie path render with the original engine:
+// a pool of workers (worker.js), each with its own qts.wasm instance and copy of the
+// compiled script; a preview frame is split into row bands across the pool, a movie hands
+// whole frames to whichever worker is idle. Movies default to the shader: a frame is drawn
+// at each frame's time and handed to the encoder (MP4 through WebCodecs + mp4-muxer, or
+// PNG frames in a zip).
 
 import { Muxer, ArrayBufferTarget } from "./vendor/mp4-muxer.mjs";
 import { Script } from "./engine/seq.js";
@@ -88,8 +92,9 @@ const state = {
   movie: null,         // {cancel: bool}
   examples: [],
   lastFrame: null,     // ImageData
-  view: "frame",       // "frame" (the wasm renderer) or "shader" (the GLSL compile, live)
+  view: "shader",      // "shader" (the GLSL compile, live) or "frame" (the wasm renderer)
   shader: null,        // {g: compile result, files, bitmaps: Map(QImage -> ImageBitmap), text}
+  noGPU: false,        // WebGL2 refused: the shader view and GPU movies are off
 };
 
 const ui = {
@@ -117,7 +122,7 @@ function setStatus(text, frac) {
 function save() {
   try {
     localStorage.setItem(STORAGE, JSON.stringify({ text: ui.editor.value, name: state.name, frac: state.frac,
-      width: ui.width.value, height: ui.height.value }));
+      width: ui.width.value, height: ui.height.value, view: state.view }));
   } catch (_) {}
 }
 
@@ -177,9 +182,13 @@ async function compile() {
   state.compiledText = text;
   if (!ui.width.value || ui.width.dataset.auto !== "0") { ui.width.value = r.info.width; ui.width.dataset.auto = "1"; }
   if (!ui.height.value || ui.height.dataset.auto !== "0") { ui.height.value = r.info.height; ui.height.dataset.auto = "1"; }
-  log(`compiled: ${r.info.duration} s at ${r.info.frameRate} fps = ${r.info.frames} frame${r.info.frames === 1 ? "" : "s"}, ${r.info.width}×${r.info.height}`);
+  logInfo(r.info);
   updateTimeText();
   return true;
+}
+
+function logInfo(info) {
+  log(`compiled: ${info.duration} s at ${info.frameRate} fps = ${info.frames} frame${info.frames === 1 ? "" : "s"}, ${info.width}×${info.height}`);
 }
 
 function outputSize() {
@@ -256,6 +265,9 @@ function drawFrame(img, w, h) {
   }
 }
 
+// shows the script in the current view: plays the shader, or renders a frame
+function refresh() { return state.view === "shader" ? showShader() : renderPreview(); }
+
 let sliderTimer = null;
 function onSlider() {
   state.frac = parseFloat(ui.slider.value);
@@ -292,9 +304,13 @@ function bitrateFor(w, h, fps) {
   return Math.min(60e6, Math.round(w * h * fps * 0.25));
 }
 
+// opts: {engine: "gpu" | "cpu", format: "mp4" | "png", first, last} (frames, 0-based)
 async function renderMovie(opts) {
   if (state.movie) return;
-  if (ui.editor.value !== state.compiledText || !state.info) {
+  const gpu = opts.engine === "gpu";
+  if (gpu) {
+    if (!(await ensureShader())) { log("the shader didn't compile: render with the original renderer instead", "err"); return; }
+  } else if (ui.editor.value !== state.compiledText || !state.info) {
     if (!(await compile())) return;
   }
   const info = state.info;
@@ -328,20 +344,53 @@ async function renderMovie(opts) {
   let wantFrame = first, encoding = Promise.resolve();
   let failed = null;
 
+  // rgba: an ArrayBuffer of pixels, or a canvas holding the frame
   const encodeFrame = async (f, rgba) => {
     const i = f - first;
     if (encoder) {
       while (encoder.encodeQueueSize > 8) await new Promise((r) => setTimeout(r, 5));
-      const frame = new VideoFrame(rgba, { format: "RGBA", codedWidth: w, codedHeight: h,
-        timestamp: Math.round(i * 1e6 / fps), duration: Math.round(1e6 / fps) });
+      const timing = { timestamp: Math.round(i * 1e6 / fps), duration: Math.round(1e6 / fps) };
+      const frame = rgba instanceof ArrayBuffer
+        ? new VideoFrame(rgba, Object.assign({ format: "RGBA", codedWidth: w, codedHeight: h }, timing))
+        : new VideoFrame(rgba, timing);
       encoder.encode(frame, { keyFrame: i % Math.round(fps * 2) === 0 });
       frame.close();
     } else {
-      const c = new OffscreenCanvas(w, h);
-      c.getContext("2d").putImageData(new ImageData(new Uint8ClampedArray(rgba), w, h), 0, 0);
-      const blob = await c.convertToBlob({ type: "image/png" });
+      let blob;
+      if (rgba instanceof ArrayBuffer) {
+        const c = new OffscreenCanvas(w, h);
+        c.getContext("2d").putImageData(new ImageData(new Uint8ClampedArray(rgba), w, h), 0, 0);
+        blob = await c.convertToBlob({ type: "image/png" });
+      } else blob = await new Promise((r) => rgba.toBlob(r, "image/png"));
       zip.add(`${base}_${String(f + 1).padStart(4, "0")}.png`, new Uint8Array(await blob.arrayBuffer()));
     }
+  };
+
+  const progress = () => {
+    const secs = (performance.now() - t0) / 1000;
+    setStatus(`frame ${done} of ${total} · ${(done / secs).toFixed(1)} fps · ${formatSecs(secs / done * (total - done))} left`, done / total);
+  };
+
+  // the GPU path: one draw per frame at the frame's exact time, on the (visible) shader canvas
+  const drawFrames = async () => {
+    const p = getPlayer();
+    const wasPlaying = p.playing;
+    p.pause();
+    p.setSize(w, h);
+    try {
+      for (let f = first; f <= last && !state.movie.cancel; ++f) {
+        p.draw(nbrFrames > 1 ? f / nbrFrames * info.duration : 0);
+        await encodeFrame(f, ui.glview);
+        done++;
+        progress();
+        // let the page breathe (and a Cancel click in) between frames
+        await new Promise((r) => { const c = new MessageChannel(); c.port1.onmessage = () => r(); c.port2.postMessage(0); });
+      }
+    } catch (e) { failed = e; }
+    const size = outputSize();
+    p.setSize(size.w, size.h);
+    if (wasPlaying && state.view === "shader") p.play(); else if (state.view === "shader") p.draw();
+    finish();
   };
 
   const dispatch = () => {
@@ -353,8 +402,7 @@ async function renderMovie(opts) {
         .then((m) => {
           results.set(f, m.rgba);
           done++;
-          const secs = (performance.now() - t0) / 1000;
-          setStatus(`frame ${done} of ${total} · ${(done / secs).toFixed(1)} fps · ${formatSecs(secs / done * (total - done))} left`, done / total);
+          progress();
           // encode in order
           encoding = encoding.then(async () => {
             while (results.has(wantFrame)) {
@@ -392,7 +440,7 @@ async function renderMovie(opts) {
         filename = base + "_frames.zip";
       }
       const secs = (performance.now() - t0) / 1000;
-      log(`${filename}: ${total} frames, ${w}×${h}, ${(blob.size / 1048576).toFixed(1)} MB in ${formatSecs(secs)} (${NWORKERS} worker${NWORKERS === 1 ? "" : "s"})`);
+      log(`${filename}: ${total} frames, ${w}×${h}, ${(blob.size / 1048576).toFixed(1)} MB in ${formatSecs(secs)} (${gpu ? "the shader" : NWORKERS + " worker" + (NWORKERS === 1 ? "" : "s")})`);
       setStatus(`done: ${filename}`);
       download(blob, filename);
     } catch (e) {
@@ -401,9 +449,9 @@ async function renderMovie(opts) {
     }
   };
 
-  log(`rendering ${total} frame${total === 1 ? "" : "s"} at ${w}×${h}, ${fps} fps → ${opts.format === "mp4" ? "MP4 (" + codec + ")" : "PNG frames"}…`);
+  log(`rendering ${total} frame${total === 1 ? "" : "s"} at ${w}×${h}, ${fps} fps with ${gpu ? "the shader" : "the original renderer"} → ${opts.format === "mp4" ? "MP4 (" + codec + ")" : "PNG frames"}…`);
   setStatus("rendering movie…", 0);
-  dispatch();
+  if (gpu) drawFrames(); else dispatch();
 }
 
 function formatSecs(s) {
@@ -414,6 +462,7 @@ function formatSecs(s) {
 }
 
 function download(blob, filename) {
+  if (window.qtsDownloadHook) { window.qtsDownloadHook(blob, filename); return; }   // the test harness catches files here
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   a.download = filename;
@@ -467,14 +516,29 @@ class ZipWriter {
 let player = null;
 function getPlayer() {
   if (player) return player;
-  player = new ShaderPlayer(ui.glview);
+  player = new ShaderPlayer(ui.glview);   // throws without WebGL2
   player.onFrame = (t) => {
     if (state.view !== "shader" || !state.shader) return;
     const d = state.shader.g.duration;
-    ui.slider.value = String(d > 0 ? t / d : 0);
+    state.frac = d > 0 ? t / d : 0;
+    ui.slider.value = String(state.frac);
     ui.timeText.textContent = `${t.toFixed(2)} s of ${d} s · ${player.fps ? player.fps.toFixed(0) + " fps" : ""}`;
   };
   return player;
+}
+
+// true when the GPU can be used at all (a WebGL2 context); remembered once it has failed
+function haveGPU() {
+  if (state.noGPU) return false;
+  try { getPlayer(); return true; }
+  catch (e) { state.noGPU = true; log(e.message, "warn"); return false; }
+}
+
+// the shader for the editor's current text, compiled if need be
+async function ensureShader() {
+  if (!haveGPU()) return false;
+  if (state.shader && state.shader.text === ui.editor.value) return true;
+  return compileShader();
 }
 
 function shaderSource() {
@@ -511,11 +575,14 @@ async function compileShader() {
     p.setShader(shaderSource(), g.images.map((im) => ({ name: "", source: bitmaps.get(im) })), g.duration);
   } catch (e) {
     log(e.message, "err");
+    log("the GPU rejected the shader: the Frame tab renders it on the CPU instead", "warn");
     setStatus("the GPU rejected the shader");
     state.shader = null;
     return false;
   }
-  if (!state.info) { state.info = script.info(); updateTimeText(); }
+  state.info = script.info();
+  logInfo(state.info);
+  updateTimeText();
   if (!ui.width.value || ui.width.dataset.auto !== "0") { ui.width.value = g.width; ui.width.dataset.auto = "1"; }
   if (!ui.height.value || ui.height.dataset.auto !== "0") { ui.height.value = g.height; ui.height.dataset.auto = "1"; }
   log(`shader: ${(g.source.length / 1024).toFixed(0)} KB of GLSL, loops every ${g.duration} s${g.images.length ? `, ${g.images.length} image${g.images.length === 1 ? "" : "s"}` : ""}`);
@@ -524,9 +591,9 @@ async function compileShader() {
 }
 
 async function showShader() {
-  if (!state.shader || state.shader.text !== ui.editor.value) {
-    if (!(await compileShader())) return;
-  }
+  if (state.movie) return;
+  if (!haveGPU()) { log("no WebGL2 here: using the Frame view", "warn"); setView("frame"); return; }
+  if (!(await ensureShader())) return;
   const { w, h } = outputSize();
   const p = getPlayer();
   p.setSize(w, h);
@@ -546,16 +613,35 @@ function shaderEdited() {
   }, 400);
 }
 
-function setView(view) {
-  state.view = view;
-  const shader = view === "shader";
+// the tabs, canvases and buttons for state.view
+function showTabs() {
+  const shader = state.view === "shader";
   $("#tabFrame").classList.toggle("on", !shader);
   $("#tabShader").classList.toggle("on", shader);
   ui.canvas.hidden = shader; ui.glview.hidden = !shader;
-  $("#frameButtons").hidden = shader; $("#shaderButtons").hidden = !shader;
+  $("#shaderButtons").hidden = !shader;
   ui.auto.parentElement.hidden = shader;
-  if (shader) showShader();
-  else { if (player) player.pause(); updateTimeText(); }
+  $("#render").textContent = shader ? "Run shader" : "Render frame";
+}
+
+function setView(view) {
+  state.view = view;
+  showTabs();
+  save();
+  if (view === "shader") showShader();
+  else {
+    if (player) player.pause();
+    updateTimeText();
+    if (!state.lastFrame || ui.editor.value !== state.compiledText) renderPreview();
+  }
+}
+
+// the current picture of the shader view as a PNG download
+function saveShaderFrame() {
+  if (!player || !state.shader) return;
+  if (!player.playing) player.draw();
+  const { frame } = frameAt(state.frac);
+  ui.glview.toBlob((b) => download(b, `${shaderBaseName()}_${String(frame + 1).padStart(4, "0")}.png`), "image/png");
 }
 
 function shaderBaseName() { return state.name.replace(/\.can$/i, "") || "shader"; }
@@ -619,9 +705,9 @@ async function openExample(file) {
   setScript(new TextDecoder("latin1").decode(bytes), file);
   history.replaceState(null, "", "?x=" + encodeURIComponent(file));
   closeGallery();
-  state.frac = 0.5;
-  ui.slider.value = "0.5";
-  await renderPreview();
+  state.frac = state.view === "shader" ? 0 : 0.5;
+  ui.slider.value = String(state.frac);
+  await refresh();
 }
 
 function setScript(text, name) {
@@ -644,14 +730,14 @@ function wire() {
   ui.slider.addEventListener("input", onSlider);
   ui.editor.addEventListener("input", () => { save(); shaderEdited(); });
   ui.editor.addEventListener("keydown", (e) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); if (state.view === "shader") showShader(); else renderPreview(); }
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); refresh(); }
     if (e.key === "Tab") {
       e.preventDefault();
       const s = ui.editor.selectionStart, t = ui.editor.selectionEnd;
       ui.editor.setRangeText("  ", s, t, "end");
     }
   });
-  $("#render").onclick = () => { if (state.view === "shader") showShader(); else renderPreview(); };
+  $("#render").onclick = refresh;
   $("#tabFrame").onclick = () => setView("frame");
   $("#tabShader").onclick = () => setView("shader");
   ui.shaderPlay.onclick = () => {
@@ -662,6 +748,7 @@ function wire() {
   $("#saveShaderHtml").onclick = () => saveShaderHtml().catch((e) => log("save: " + e.message, "err"));
   $("#saveShaderGlsl").onclick = () => saveShaderGlsl().catch((e) => log("save: " + e.message, "err"));
   $("#savePng").onclick = () => {
+    if (state.view === "shader") { saveShaderFrame(); return; }
     if (!state.lastFrame) return;
     const c = document.createElement("canvas");
     c.width = state.lastFrame.width; c.height = state.lastFrame.height;
@@ -669,20 +756,22 @@ function wire() {
     const { frame } = frameAt(state.frac);
     c.toBlob((b) => download(b, `${state.name.replace(/\.can$/i, "")}_${String(frame + 1).padStart(4, "0")}.png`), "image/png");
   };
-  $("#movie").onclick = () => {
-    if (!state.info) { compile().then((ok) => ok && showMovieDialog()); return; }
-    showMovieDialog();
+  $("#movie").onclick = async () => {
+    // the dialog needs the script's frame count for the current text: from the shader, else the wasm
+    const ok = (haveGPU() && await ensureShader()) || (ui.editor.value === state.compiledText && state.info) || await compile();
+    if (ok) showMovieDialog();
   };
   $("#movieCancel").onclick = () => { if (state.movie) { state.movie.cancel = true; pool.cancel(); } };
   $("#movieGo").onclick = () => {
     const d = $("#movieDialog");
     d.close();
-    const format = $("#movieFormat").value;
+    const format = $("#movieFormat").value, engine = $("#movieEngine").value;
     const all = $("#movieAll").checked;
     const n = state.info ? state.info.frames : 1;
-    renderMovie({ format, first: all ? 0 : parseInt($("#movieFirst").value, 10) - 1, last: all ? n - 1 : parseInt($("#movieLast").value, 10) - 1 });
+    renderMovie({ engine, format, first: all ? 0 : parseInt($("#movieFirst").value, 10) - 1, last: all ? n - 1 : parseInt($("#movieLast").value, 10) - 1 });
   };
   $("#movieClose").onclick = () => $("#movieDialog").close();
+  $("#movieEngine").onchange = movieHint;
   for (const el of [ui.width, ui.height]) el.addEventListener("input", () => { el.dataset.auto = "0"; save();
     if (state.view === "shader" && player) { const { w, h } = outputSize(); player.setSize(w, h); if (!player.playing) player.draw(); } });
   $("#sizeReset").onclick = () => { ui.width.dataset.auto = "1"; ui.height.dataset.auto = "1";
@@ -692,7 +781,7 @@ function wire() {
   $("#galleryClose").onclick = closeGallery;
   $("#new").onclick = () => {
     setScript(`// a new script: one sequence, one second, 256x256\n<seq fw=256 fh=256 duration=1 framerate=12 center oversample\n  hsv="a/pi2, 1, 1-d*2" />\n`, "untitled.can");
-    renderPreview();
+    refresh();
   };
   $("#open").onclick = () => $("#openFile").click();
   $("#openFile").onchange = async (e) => {
@@ -700,7 +789,7 @@ function wire() {
     if (!f) return;
     setScript(new TextDecoder("latin1").decode(new Uint8Array(await f.arrayBuffer())), f.name);
     e.target.value = "";
-    renderPreview();
+    refresh();
   };
   $("#save").onclick = () => download(new Blob([ui.editor.value], { type: "text/plain" }), state.name || "script.can");
   $("#images").onclick = () => $("#imageFiles").click();
@@ -727,7 +816,17 @@ function showMovieDialog() {
   const canMp4 = typeof VideoEncoder !== "undefined";
   $("#movieFormat").querySelector('option[value="mp4"]').disabled = !canMp4;
   if (!canMp4) $("#movieFormat").value = "png";
+  const canGPU = !!(state.shader && state.shader.text === ui.editor.value);
+  $("#movieEngine").querySelector('option[value="gpu"]').disabled = !canGPU;
+  $("#movieEngine").value = canGPU ? "gpu" : "cpu";
+  movieHint();
   d.showModal();
+}
+
+function movieHint() {
+  $("#movieHint").textContent = $("#movieEngine").value === "gpu"
+    ? "The shader draws each frame on the GPU: quick, 32-bit float, and the frames show as they are made. The file downloads when it is done."
+    : "The original renderer runs in this tab on every core: exact, but a formula per pixel per frame. The file downloads when it is done.";
 }
 
 async function start() {
@@ -737,6 +836,9 @@ async function start() {
   const want = params.get("x");
   let saved = null;
   try { saved = JSON.parse(localStorage.getItem(STORAGE) || "null"); } catch (_) {}
+  // the view: the one used last time, else the shader where there is WebGL2
+  state.view = saved && saved.view === "frame" ? "frame" : haveGPU() ? "shader" : "frame";
+  showTabs();
   if (want) {
     await openExample(want);
     return;
@@ -749,7 +851,7 @@ async function start() {
     ui.slider.value = String(state.frac);
     if (saved.width) { ui.width.value = saved.width; ui.width.dataset.auto = "0"; }
     if (saved.height) { ui.height.value = saved.height; ui.height.dataset.auto = "0"; }
-    await renderPreview();
+    await refresh();
   } else {
     await openExample(FIRST_EXAMPLE);
   }

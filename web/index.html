@@ -41,8 +41,8 @@
 
   <section class="view">
     <div class="tabs" role="tablist">
-      <button id="tabFrame" class="on" role="tab">Frame</button>
-      <button id="tabShader" role="tab" title="the script compiled to a GLSL shader, playing live on the GPU">Live shader</button>
+      <button id="tabShader" class="on" role="tab" title="the script compiled to a GLSL shader, playing live on the GPU">Live shader</button>
+      <button id="tabFrame" role="tab" title="one frame from the original renderer (WebAssembly, every core): exact, and for devices without a usable GPU">Frame</button>
     </div>
     <div class="canvasWrap"><canvas id="preview" width="256" height="256"></canvas><canvas id="glview" width="256" height="256" hidden></canvas></div>
     <div class="timeRow">
@@ -54,17 +54,17 @@
       <label>size <input id="width" type="number" min="1" max="4096" placeholder="w"> × <input id="height" type="number" min="1" max="4096" placeholder="h">
         <button id="sizeReset" title="back to the script's fw/fh">↺</button></label>
     </div>
-    <div class="row" id="frameButtons">
-      <button id="savePng">Save frame (PNG)</button>
-      <button id="movie" class="primary">Render movie…</button>
-      <button id="movieCancel" hidden>Cancel</button>
-    </div>
     <div class="row" id="shaderButtons" hidden>
       <button id="shaderPlay" class="primary">Pause</button>
       <label><input type="checkbox" id="shaderOversample" checked> oversample</label>
       <button id="saveShaderHtml" title="a page that plays the loop, with the shader and images inside">Save shader (HTML)</button>
       <button id="saveShaderGlsl" title="the fragment shader alone, in Shadertoy's dialect">Save GLSL</button>
       <span id="shaderFps" class="dim"></span>
+    </div>
+    <div class="row">
+      <button id="savePng">Save frame (PNG)</button>
+      <button id="movie" class="primary">Render movie…</button>
+      <button id="movieCancel" hidden>Cancel</button>
     </div>
     <div class="statusRow"><span id="status"></span><progress id="progress" max="1" value="0" hidden></progress></div>
   </section>
@@ -86,6 +86,12 @@
   <h2>Render movie</h2>
   <p id="movieInfo"></p>
   <p>
+    <label>Render with
+      <select id="movieEngine">
+        <option value="gpu">the shader (GPU: fast)</option>
+        <option value="cpu">the original renderer (CPU: exact)</option>
+      </select>
+    </label>
     <label>Format
       <select id="movieFormat">
         <option value="mp4">MP4 (H.264)</option>
@@ -98,7 +104,7 @@
     <label><input type="radio" name="movieRange" id="movieSome"> frames
       <input id="movieFirst" type="number" min="1" value="1"> to <input id="movieLast" type="number" min="1" value="1"></label>
   </p>
-  <p class="hint">Rendering runs in this tab, on every core; the file downloads when it is done.</p>
+  <p class="hint" id="movieHint"></p>
   <p class="buttons"><button id="movieClose">Cancel</button> <button id="movieGo" class="primary">Render</button></p>
 </dialog>
 

@@ -18,9 +18,25 @@ SKIP = {"logicfrac.can", "noiseetude2.can", "test.can", "test2.can", "speedtest.
         "chop_test.can", "png_test.can", "ps_test.can", "ps_logo_test.can", "noisetest.can",
         "mandel_test.can", "spiral2_test.can", "gnoise.can"}
 
+# scripts that aren't shader-friendly (the site's default view and movie path): copied, so a
+# ?x= link still opens them, but kept out of the examples menu and gallery. The deep
+# Mandelbrot zooms reach widths of 1e-9..1e-12, which 32-bit GPU floats can't resolve
+# (they dissolve into noise, some from the first frame); julia2 iterates 8192 times, so its
+# escape counts drift too, and it draws at 6 fps. (jbum, 2026-10-11: "comment out the
+# presets that aren't shader friendly".) mandel_classic, at width 2.75, is fine and stays.
+NOT_SHADER = {"mandel.can", "mandel2.can", "mandel3.can", "mandel4.can", "mandel5.can", "mandel6.can",
+              "mandel_bw.can", "mandel_classic2.can", "mandel_ctab.can", "mandel_ctab2.can", "julia2.can"}
+
+# scaffolding for Noise Etude: noise studies and title/credit tests that were pasted into it
+# and reworked there (the LEC_ files were lecture demos; LEC_eclipse duplicates eclipse).
+# Copied like the above, but not listed. (jbum, 2026-10-11: "It was scaffolding.")
+SCAFFOLDING = {"LEC_Noise1.can", "LEC_Noise2.can", "LEC_Noise3.can", "LEC_Noise3a.can", "LEC_Noise4.can",
+               "LEC_Noise5.can", "LEC_NoiseAni.can", "LEC_Foreground.can", "LEC_eclipse.can", "noise.can",
+               "clouds.can", "clouds_dusk.can", "chop_sample.can", "ripple2.can", "endcredits.can"}
+
 # the order in the gallery: the showpieces first
 FEATURED = ["noiseetude.can", "sun.can", "star.can", "spiral2.can", "mona.can", "smokezoom.can", "fire.can",
-            "mandel_ctab.can", "julia2.can", "saturnrings.can", "eclipse.can", "lavalamp.can", "xorspiral.can"]
+            "mandel_classic.can", "julia.can", "saturnrings.can", "eclipse.can", "lavalamp.can", "xorspiral.can"]
 
 
 def run(*args, **kw):
@@ -73,6 +89,9 @@ def main():
             print("skip", name, "(doesn't compile)")
             continue
         shutil.copy(src, exdir)
+        if name in NOT_SHADER or name in SCAFFOLDING:
+            print("unlisted", name, "(not shader-friendly)" if name in NOT_SHADER else "(Noise Etude scaffolding)")
+            continue
         thumb = os.path.join(thumbs, name[:-4] + ".png")
         w, h = meta["width"], meta["height"]
         tw = 320

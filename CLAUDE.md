@@ -76,8 +76,22 @@ See README.md for the layout; this file is what isn't obvious from the code.
   `shadertest.html?run&k=regex` in Chrome) both match within 1 level, Noise Etude in 6 s.
   The Chrome *automation* tab doesn't run requestAnimationFrame reliably — judge animation with
   `tests/shoot.js` (headless screenshots) instead.
-- Ideas: render movies from the shader (GPU, readPixels per frame) — far faster than the wasm;
-  a Shadertoy-style "share" link.
+- **Shaders first (jbum, 2026-10-11: "I think I want to focus on shaders")**: the Live shader tab is
+  the default view (remembered per browser in localStorage; falls back to Frame without WebGL2), and
+  movies render from the shader unless the dialog says "the original renderer" (one draw per frame at
+  the renderer's frame time f/n·duration, `VideoFrame(canvas)` into WebCodecs, or toBlob for PNGs; the
+  frames show on the canvas as they go). `tests/editor_test.js` drives the built site in headless
+  Chrome **on the real GPU** (`--use-angle=metal` works headless) and checks a saved frame, PNG and MP4
+  movies from both engines against native qts. `tests/shader_test.js -g -s -f 0.95 -d dir` likewise
+  (real GPU, timings, a late frame, picture dumps). Unlisted presets: `NOT_SHADER` and `SCAFFOLDING`
+  in build_web.py (deep-zoom fractals + julia2; the LEC_ noise studies, clouds, title/credit tests that
+  became Noise Etude). Known CPU/GPU differences besides float32: NaNs (bias/gain/2-arg ease outside
+  0..1 — star's yellow ring on the CPU is one) and sampling a sequence outside its lifetime (mona2's
+  last half second: black on the CPU, the tiled image on the GPU; the CPU result also depends on frame
+  order). Not emulated: GPU NaN behaviour isn't portable.
+- The Frame view / wasm path stays for exactness and for devices whose GPU can't take the shaders
+  (jbum's iPad, as of 2026-10-11 — not debugged yet; nothing iPad-specific is known).
+- Ideas: a Shadertoy-style "share" link; GPU movie rendering at sizes above the canvas limit.
 - The site has no social card yet beyond `assets/card.png` made by build_web.py (the sun example +
   title); jbum may want a nicer one.
 - GitHub: https://github.com/jbum/pixelmagic (public, created 2026-10-11).

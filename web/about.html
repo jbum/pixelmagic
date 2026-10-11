@@ -43,7 +43,8 @@ faithful enough that the sample scripts from 2001 render as they did (a few bugs
 show). The math library is compiled in, so a frame renders the same bits on every machine.
 Rendering runs in Web Workers on all your cores; MP4s are encoded in the browser with WebCodecs.</p>
 <p>A second compiler turns a script into a GLSL fragment shader, so the same formulas play in real time on the GPU:
-the editor's <b>Live shader</b> tab, which can also save the loop as a stand-alone page or as a Shadertoy-ready shader.</p>
+the editor's <b>Live shader</b> tab, its usual view, which also renders movies and can save the loop as a stand-alone
+page or as a Shadertoy-ready shader. The <b>Frame</b> tab and the "exact" movie option use the original renderer.</p>
 <p>The same code builds a native command-line renderer (<code>qts</code>) that writes PNG frames or pipes raw
 video to ffmpeg; that is what rendered the movie above.</p>
 

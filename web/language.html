@@ -117,8 +117,12 @@ Case does not matter. <code>pi</code>, <code>pi2</code> (2π) and <code>e</code>
 </table>
 
 <h2 id="shader">Live shader</h2>
-<p>The <b>Live shader</b> tab compiles the script to a GLSL fragment shader and plays it on the GPU, looping every
-<code>duration</code> seconds, at whatever size the size boxes say; edits recompile as you type. <b>Save shader (HTML)</b>
+<p>The <b>Live shader</b> tab, the editor's usual view, compiles the script to a GLSL fragment shader and plays it on the GPU,
+looping every <code>duration</code> seconds, at whatever size the size boxes say; edits recompile as you type. The
+<b>Frame</b> tab renders one frame with the original engine instead (WebAssembly, on every core): exact, frame-stepped,
+and the one to use where the GPU is weak. The editor remembers which tab you last used. <b>Save frame (PNG)</b> and
+<b>Render movie…</b> work from either: a movie is drawn by the shader unless the dialog says to use the original renderer
+(or the shader didn't compile), and the frames show as they are made. <b>Save shader (HTML)</b>
 writes a page that plays the loop by itself, with the shader and any images inside it (space pauses, arrows step,
 <code>s</code> saves a frame, <code>o</code> toggles oversampling). <b>Save GLSL</b> writes the fragment shader alone, in
 Shadertoy's dialect (<code>mainImage</code>, <code>iTime</code>, <code>iResolution</code>, <code>iChannel0</code>…), so it can be pasted there
@@ -127,7 +131,9 @@ Shadertoy's dialect (<code>mainImage</code>, <code>iTime</code>, <code>iResoluti
 <code>oversample</code>, the blend modes, sampling of other sequences and images, noise, fractals and the rest. It differs in
 being 32-bit float where the renderer is double (the deep Mandelbrot zooms in the examples, with widths of a billionth,
 dissolve into noise on the GPU; shallow ones are fine), in time being continuous rather than stepping by frames, and in
-<code>?</code> giving a different random stream. A few things can't be done in a shader: sequences that sample each
+<code>?</code> giving a different random stream. Where the formulas leave their domain (<code>bias</code>, <code>gain</code> and
+two-argument <code>ease</code> outside 0..1, for instance) the renderer makes NaNs and the GPU makes something else, and a sequence
+sampled outside its own lifetime is undefined in both. A few things can't be done in a shader: sequences that sample each
 other in a cycle, more than four images, and iteration counts (<code>recurse</code>) above 4000. Scripts that use
 <code>fnoise</code>/<code>turb</code> under several sampled layers with oversampling can be heavy; untick <b>oversample</b> for four times the speed.</p>
 
@@ -136,7 +142,8 @@ other in a cycle, more than four images, and iteration counts (<code>recurse</co
 <li>This is the renderer of QTS (2001–2003), the last version of Pixel Magic, ported from its C++ source;
 the sample scripts are the originals and render as they did then, quirks included.</li>
 <li>Renders are deterministic: the same script gives the same pixels here and in the native <code>qts</code> tool.</li>
-<li>Rendering uses every core in your machine, but it is still a formula per pixel per frame: long movies take minutes.</li>
+<li>Movies render on the GPU by default; the original renderer uses every core in your machine, but it is still a
+formula per pixel per frame, so long movies take minutes that way.</li>
 </ul>
 </article>
 </body>
