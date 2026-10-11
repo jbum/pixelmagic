@@ -89,8 +89,10 @@ See README.md for the layout; this file is what isn't obvious from the code.
   0..1 — star's yellow ring on the CPU is one) and sampling a sequence outside its lifetime (mona2's
   last half second: black on the CPU, the tiled image on the GPU; the CPU result also depends on frame
   order). Not emulated: GPU NaN behaviour isn't portable.
-- The Frame view / wasm path stays for exactness and for devices whose GPU can't take the shaders
-  (jbum's iPad, as of 2026-10-11 — not debugged yet; nothing iPad-specific is known).
+- The Frame view / wasm path stays for exactness and for devices whose GPU can't take the shaders.
+  jbum's iPad struggled with the shader tab while Frame was the default; with the shader as the
+  default (no wasm workers rendering at the same time) "shaders work great on iPad now"
+  (2026-10-11). Likely the CPU render competing, not the GPU — not proven.
 - Ideas: a Shadertoy-style "share" link; GPU movie rendering at sizes above the canvas limit.
 - The site has no social card yet beyond `assets/card.png` made by build_web.py (the sun example +
   title); jbum may want a nicer one.
