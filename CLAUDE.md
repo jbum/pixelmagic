@@ -32,6 +32,14 @@ See README.md for the layout; this file is what isn't obvious from the code.
   or PNGs in a stored zip).
 
 ## Not done / ideas
+- **Backlog (jbum, 2026-10-11): a friendlier editor** — a node-based editor with a property panel,
+  or a hierarchical list of the sequences, as a tab beside the XML text panel, and the default one.
+- Sampling semantics: a bare `$name` uses the sampling layer's raw x,y as 0..1 coords (the
+  surviving source; matches the June-2001 lavalamp.mov and 2003 explosion.mov renders). Noise
+  Etude (Feb 2001) needed relative sampling and was converted to say it explicitly
+  (`$name[(x-left)/w,(y-top)/h]`; the untouched script is orig/QTS/noiseetude_2001.can, and
+  `qts --rel` renders it the relative way). The archive's .mov files are the ground truth for
+  such questions: `Samples/*.mov` next to the scripts (ffmpeg decodes svq1/qtrle).
 - Compile expressions to GLSL for real-time animation (jbum's stretch goal). The parser already
   builds a syntax tree (`Node` in expr_parse.cpp); a GLSL emitter would hang off that. Sequence
   sampling (`$a[x,y]`), image sampling and the fractal/noise functions would need shader versions.

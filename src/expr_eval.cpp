@@ -26,6 +26,8 @@ int32_t TruncXToLong(ssfloat d)
 
 int32_t ExpMgr::PopL() { return TruncXToLong(PopF()); }
 
+bool gRelativeSampling = false;
+
 void InitGradientTable();
 
 ExpMgr::ExpMgr()
@@ -546,15 +548,29 @@ Scalar *ExpMgr::EvalScalar(const ExpRec &cExp, ExpVars *cVars, Scalar *retPtr)
 					PushScalar(&sc1);
 				}
 				break;
+			// $a and $a[t]: the other sequence at this pixel, with this sequence's raw x,y
+			// taken as 0..1 coordinates of a's field. That is what the source did and what
+			// the archive's June 2001 and 2003 QuickTime renders show. Noise Etude (Feb 2001)
+			// needs the same *relative* position instead (gRelativeSampling, the CLI's --rel);
+			// examples/noiseetude.can was rewritten to say so explicitly, so it renders the
+			// same either way.
 			case OP_SampSeq:
 				lv1 = PopL();
-				SampSeq(lv1, cVars->x, cVars->y, cVars, false, 0, &sc1);
+				if (gRelativeSampling)
+					SampSeq(lv1, (cVars->x - cVars->leftVal) / cVars->widthVal,
+					        (cVars->y - cVars->topVal) / cVars->heightVal, cVars, false, 0, &sc1);
+				else
+					SampSeq(lv1, cVars->x, cVars->y, cVars, false, 0, &sc1);
 				PushScalar(&sc1);
 				break;
 			case OP_SampSeqT:
 				lv1 = PopL();
 				v3 = PopF();
-				SampSeq(lv1, cVars->x, cVars->y, cVars, true, v3, &sc1);
+				if (gRelativeSampling)
+					SampSeq(lv1, (cVars->x - cVars->leftVal) / cVars->widthVal,
+					        (cVars->y - cVars->topVal) / cVars->heightVal, cVars, true, v3, &sc1);
+				else
+					SampSeq(lv1, cVars->x, cVars->y, cVars, true, v3, &sc1);
 				PushScalar(&sc1);
 				break;
 			case OP_SampSeqXY:

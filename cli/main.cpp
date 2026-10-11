@@ -43,7 +43,8 @@ static void usage()
 		"  -raw       write raw RGB24 frames to stdout instead of PNGs\n"
 		"  -i         print the script's duration, frame rate and size, and exit\n"
 		"  -P         report progress on stderr\n"
-		"  -q         quiet\n");
+		"  -q         quiet\n"
+		"  --rel      $a samples at the same relative position (see expr_eval.cpp)\n");
 	exit(2);
 }
 
@@ -105,6 +106,7 @@ int main(int argc, char **argv)
 		else if (a == "-i") info = true;
 		else if (a == "-P") progress = true;
 		else if (a == "-q") quiet = true;
+		else if (a == "--rel") gRelativeSampling = true;
 		else if (a[0] == '-' && a.size() > 1) usage();
 		else scriptPath = a;
 	}

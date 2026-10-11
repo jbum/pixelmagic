@@ -272,4 +272,8 @@ ssfloat Distance(ssfloat xd, ssfloat yd);
 // (int) of a double, as 32-bit Windows did it: out-of-range and NaN give INT_MIN
 int32_t TruncXToLong(ssfloat d);
 
+// $a samples the other sequence with this sequence's raw x,y taken as 0..1 coordinates
+// (false, the original) or at the same relative position in the field (true)
+extern bool gRelativeSampling;
+
 #endif
