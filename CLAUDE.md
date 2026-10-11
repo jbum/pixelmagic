@@ -57,9 +57,27 @@ See README.md for the layout; this file is what isn't obvious from the code.
   (`$name[(x-left)/w,(y-top)/h]`; the untouched script is orig/QTS/noiseetude_2001.can, and
   `qts --rel` renders it the relative way). The archive's .mov files are the ground truth for
   such questions: `Samples/*.mov` next to the scripts (ffmpeg decodes svq1/qtrle).
-- Compile expressions to GLSL for real-time animation (jbum's stretch goal). The parser already
-  builds a syntax tree (`Node` in expr_parse.cpp); a GLSL emitter would hang off that. Sequence
-  sampling (`$a[x,y]`), image sampling and the fractal/noise functions would need shader versions.
+- **GLSL (done 2026-10-11)**: `web/engine/glsl.js` compiles a loaded JS-engine `Script` to a fragment
+  shader: one `qts_ctx/pix/pin/samp/layer<k>` set per sequence (properties at a time, the pix
+  expression typed float-or-vec3 with the VM's "last component" rule, pinning, `$name` sampling,
+  2x2 oversampling), `mainImage` composites the leaves alive at `mod(iTime, duration)` in renderer
+  order (normal replaces, chop blends in 8-bit steps). Sampled sequences are emitted first
+  (topological order; a cycle is an error, GLSL can't recurse). Images are `iChannelN` read with
+  texelFetch (row 0 = top, no flip). `web/shader.js` holds the player as *source text* so the
+  editor and the standalone download run identical code. Harness: `tests/shader_test.js` runs
+  `web/shadertest.html` in headless Chrome with SwiftShader (slow: minutes; `-k` to pick) and
+  streams per-script results; threshold "under 1% of bytes more than 8 levels off".
+  Known differences: float32 (the deep-zoom mandel/julia examples, widths ~1e-9..1e-11, are
+  noise on the GPU: inherent, not a bug — mandel_classic matches), continuous time, a different
+  `?` stream (turbcycle mixes 10% of `?` noise, so it "differs" by design). Last run: everything
+  else matched (most within 1 level). SwiftShader loses the GL context after a few heavy scripts
+  (the harness makes a fresh context per script; `-p` picks the port for parallel runs), renders
+  sun.can black and never finishes noiseetude's 272 KB shader — on a real GPU (the test page
+  `shadertest.html?run&k=regex` in Chrome) both match within 1 level, Noise Etude in 6 s.
+  The Chrome *automation* tab doesn't run requestAnimationFrame reliably — judge animation with
+  `tests/shoot.js` (headless screenshots) instead.
+- Ideas: render movies from the shader (GPU, readPixels per frame) — far faster than the wasm;
+  a Shadertoy-style "share" link.
 - The site has no social card yet beyond `assets/card.png` made by build_web.py (the sun example +
   title); jbum may want a nicer one.
 - GitHub: https://github.com/jbum/pixelmagic (public, created 2026-10-11).

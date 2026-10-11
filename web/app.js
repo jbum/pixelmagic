@@ -6,6 +6,10 @@
 // them in order (MP4 through WebCodecs + mp4-muxer, or PNG frames in a zip).
 
 import { Muxer, ArrayBufferTarget } from "./vendor/mp4-muxer.mjs";
+import { Script } from "./engine/seq.js";
+import { Image as QImage } from "./engine/image.js";
+import { compileScriptToGLSL, GLSLError } from "./engine/glsl.js";
+import { ShaderPlayer, standaloneHTML } from "./shader.js";
 
 const $ = (s) => document.querySelector(s);
 const NWORKERS = Math.min(8, Math.max(1, navigator.hardwareConcurrency || 2));
@@ -84,12 +88,15 @@ const state = {
   movie: null,         // {cancel: bool}
   examples: [],
   lastFrame: null,     // ImageData
+  view: "frame",       // "frame" (the wasm renderer) or "shader" (the GLSL compile, live)
+  shader: null,        // {g: compile result, files, bitmaps: Map(QImage -> ImageBitmap), text}
 };
 
 const ui = {
   editor: $("#editor"), canvas: $("#preview"), slider: $("#time"), timeText: $("#timeText"),
   log: $("#log"), name: $("#name"), status: $("#status"), progress: $("#progress"),
   width: $("#width"), height: $("#height"), auto: $("#autoRender"),
+  glview: $("#glview"), shaderPlay: $("#shaderPlay"), shaderFps: $("#shaderFps"), shaderOversample: $("#shaderOversample"),
 };
 
 function log(msg, cls) {
@@ -252,6 +259,11 @@ function drawFrame(img, w, h) {
 let sliderTimer = null;
 function onSlider() {
   state.frac = parseFloat(ui.slider.value);
+  if (state.view === "shader") {
+    if (player && state.shader) { player.pause(); ui.shaderPlay.textContent = "Play"; player.seek(state.frac * player.duration); }
+    save();
+    return;
+  }
   updateTimeText();
   save();
   if (!ui.auto.checked) return;
@@ -450,6 +462,124 @@ class ZipWriter {
   }
 }
 
+// ------------------------------------------------------------------ the live shader
+
+let player = null;
+function getPlayer() {
+  if (player) return player;
+  player = new ShaderPlayer(ui.glview);
+  player.onFrame = (t) => {
+    if (state.view !== "shader" || !state.shader) return;
+    const d = state.shader.g.duration;
+    ui.slider.value = String(d > 0 ? t / d : 0);
+    ui.timeText.textContent = `${t.toFixed(2)} s of ${d} s · ${player.fps ? player.fps.toFixed(0) + " fps" : ""}`;
+  };
+  return player;
+}
+
+function shaderSource() {
+  const src = state.shader.g.source;
+  return ui.shaderOversample.checked ? src : src.replace("#define QTS_OVERSAMPLE 1", "#define QTS_OVERSAMPLE 0");
+}
+
+// Parses the script with the JS engine, compiles it to GLSL and loads it into the player.
+async function compileShader() {
+  const text = ui.editor.value;
+  let p;
+  try { p = getPlayer(); } catch (e) { log(e.message, "err"); return false; }
+  const files = await collectImages(text);
+  const images = new Map(), bitmaps = new Map(), fileOf = new Map();
+  for (const f of files) {
+    try {
+      const img = await QImage.decode(f.data.slice(0));
+      fileOf.set(img, f);
+      images.set(f.name, img); images.set(f.name.toLowerCase(), img);
+      for (const alias of imageNames(text)) if (alias.toLowerCase().replace(/\.[^.]*$/, "") === f.name.toLowerCase().replace(/\.[^.]*$/, "")) { images.set(alias, img); images.set(alias.toLowerCase(), img); }
+      bitmaps.set(img, await createImageBitmap(new Blob([f.data])));
+    } catch (e) { log(`image ${f.name}: ${e.message}`, "warn"); }
+  }
+  const script = new Script();
+  ui.log.textContent = "";
+  if (!script.load(text, images)) { for (const e of script.errors) log(e, "err"); setStatus("compile failed"); return false; }
+  for (const w of script.warnings) log(w, "warn");
+  let g;
+  try { g = compileScriptToGLSL(script); }
+  catch (e) { if (e instanceof GLSLError) { log("shader: " + e.message, "err"); setStatus("shader compile failed"); return false; } throw e; }
+  for (const w of g.warnings) log("shader: " + w, "warn");
+  state.shader = { g, files, bitmaps, fileOf, text };
+  try {
+    p.setShader(shaderSource(), g.images.map((im) => ({ name: "", source: bitmaps.get(im) })), g.duration);
+  } catch (e) {
+    log(e.message, "err");
+    setStatus("the GPU rejected the shader");
+    state.shader = null;
+    return false;
+  }
+  if (!state.info) { state.info = script.info(); updateTimeText(); }
+  if (!ui.width.value || ui.width.dataset.auto !== "0") { ui.width.value = g.width; ui.width.dataset.auto = "1"; }
+  if (!ui.height.value || ui.height.dataset.auto !== "0") { ui.height.value = g.height; ui.height.dataset.auto = "1"; }
+  log(`shader: ${(g.source.length / 1024).toFixed(0)} KB of GLSL, loops every ${g.duration} s${g.images.length ? `, ${g.images.length} image${g.images.length === 1 ? "" : "s"}` : ""}`);
+  setStatus("");
+  return true;
+}
+
+async function showShader() {
+  if (!state.shader || state.shader.text !== ui.editor.value) {
+    if (!(await compileShader())) return;
+  }
+  const { w, h } = outputSize();
+  const p = getPlayer();
+  p.setSize(w, h);
+  p.seek(state.frac * p.duration);
+  p.play();
+  ui.shaderPlay.textContent = "Pause";
+}
+
+let shaderTimer = null;
+function shaderEdited() {
+  if (state.view !== "shader") return;
+  clearTimeout(shaderTimer);
+  shaderTimer = setTimeout(async () => {
+    if (!(await compileShader())) return;
+    const p = getPlayer();
+    if (!p.playing) p.draw();
+  }, 400);
+}
+
+function setView(view) {
+  state.view = view;
+  const shader = view === "shader";
+  $("#tabFrame").classList.toggle("on", !shader);
+  $("#tabShader").classList.toggle("on", shader);
+  ui.canvas.hidden = shader; ui.glview.hidden = !shader;
+  $("#frameButtons").hidden = shader; $("#shaderButtons").hidden = !shader;
+  ui.auto.parentElement.hidden = shader;
+  if (shader) showShader();
+  else { if (player) player.pause(); updateTimeText(); }
+}
+
+function shaderBaseName() { return state.name.replace(/\.can$/i, "") || "shader"; }
+
+async function saveShaderHtml() {
+  if (!state.shader) { if (!(await compileShader())) return; }
+  const { g, fileOf } = state.shader;
+  const images = [];
+  for (const im of g.images) {
+    const file = fileOf.get(im);
+    if (!file) continue;
+    const type = /\.jpe?g$/i.test(file.name) ? "image/jpeg" : "image/png";
+    const dataURL = await new Promise((r) => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(new Blob([file.data], { type })); });
+    images.push({ name: file.name, dataURL });
+  }
+  const html = standaloneHTML({ source: shaderSource(), title: shaderBaseName(), images, duration: g.duration, width: g.width, height: g.height });
+  download(new Blob([html], { type: "text/html" }), shaderBaseName() + "_shader.html");
+}
+
+async function saveShaderGlsl() {
+  if (!state.shader) { if (!(await compileShader())) return; }
+  download(new Blob([shaderSource()], { type: "text/plain" }), shaderBaseName() + ".glsl");
+}
+
 // ------------------------------------------------------------------ examples
 
 async function loadExamples() {
@@ -512,16 +642,25 @@ function closeGallery() { $("#galleryPanel").hidden = true; }
 
 function wire() {
   ui.slider.addEventListener("input", onSlider);
-  ui.editor.addEventListener("input", () => { save(); });
+  ui.editor.addEventListener("input", () => { save(); shaderEdited(); });
   ui.editor.addEventListener("keydown", (e) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); renderPreview(); }
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); if (state.view === "shader") showShader(); else renderPreview(); }
     if (e.key === "Tab") {
       e.preventDefault();
       const s = ui.editor.selectionStart, t = ui.editor.selectionEnd;
       ui.editor.setRangeText("  ", s, t, "end");
     }
   });
-  $("#render").onclick = () => renderPreview();
+  $("#render").onclick = () => { if (state.view === "shader") showShader(); else renderPreview(); };
+  $("#tabFrame").onclick = () => setView("frame");
+  $("#tabShader").onclick = () => setView("shader");
+  ui.shaderPlay.onclick = () => {
+    if (!player || !state.shader) { showShader(); return; }
+    if (player.playing) { player.pause(); ui.shaderPlay.textContent = "Play"; } else { player.play(); ui.shaderPlay.textContent = "Pause"; }
+  };
+  ui.shaderOversample.onchange = () => { if (state.shader) { state.shader.text = null; showShader(); } };
+  $("#saveShaderHtml").onclick = () => saveShaderHtml().catch((e) => log("save: " + e.message, "err"));
+  $("#saveShaderGlsl").onclick = () => saveShaderGlsl().catch((e) => log("save: " + e.message, "err"));
   $("#savePng").onclick = () => {
     if (!state.lastFrame) return;
     const c = document.createElement("canvas");
@@ -544,7 +683,8 @@ function wire() {
     renderMovie({ format, first: all ? 0 : parseInt($("#movieFirst").value, 10) - 1, last: all ? n - 1 : parseInt($("#movieLast").value, 10) - 1 });
   };
   $("#movieClose").onclick = () => $("#movieDialog").close();
-  for (const el of [ui.width, ui.height]) el.addEventListener("input", () => { el.dataset.auto = "0"; save(); });
+  for (const el of [ui.width, ui.height]) el.addEventListener("input", () => { el.dataset.auto = "0"; save();
+    if (state.view === "shader" && player) { const { w, h } = outputSize(); player.setSize(w, h); if (!player.playing) player.draw(); } });
   $("#sizeReset").onclick = () => { ui.width.dataset.auto = "1"; ui.height.dataset.auto = "1";
     if (state.info) { ui.width.value = state.info.width; ui.height.value = state.info.height; } save(); };
   $("#examples").onchange = (e) => { if (e.target.value) openExample(e.target.value); e.target.value = ""; };

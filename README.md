@@ -11,7 +11,8 @@ into stills and movies. Live at **https://qts.jbum.com/**.
   web worker calls), `smath/` (musl's libm, compiled in, so every platform renders the same bits).
 - `cli/main.cpp` — `qts`: `make`, then `./qts script.can` (PNG frames), `-t SECS`/`-T FRAC` for one
   frame, `-raw | ffmpeg` for a movie, `-j N` threads, `-i` to print the script's parameters.
-- `web/` — the site: editor (`index.html`/`app.js`), render worker (`worker.js`), reference and About
+- `web/` — the site: editor (`index.html`/`app.js`), render worker (`worker.js`), the live shader view
+  (`shader.js`: a WebGL2 player, also embedded in the downloadable standalone page), reference and About
   pages. `build/build_wasm.sh web` builds `qts.wasm`; `build/build_web.py` assembles `build/web/`
   (examples, thumbnails, the Noise Etude movie from `build/out/`); `build/deploy_web.sh` publishes it.
 - `examples/` — the sample scripts (`.can`) and images from the QTS archive. `orig/QTS/` — the
@@ -20,6 +21,10 @@ into stills and movies. Live at **https://qts.jbum.com/**.
   requires identical bytes. `tests/compare_js.js` does the same for `web/engine/`, a second,
   pure-JavaScript renderer (kept for tests and tooling; the site renders with the wasm, which
   benchmarked faster — `web/bench.html`).
+- `web/engine/glsl.js` — compiles a script to a GLSL ES 3.00 fragment shader (Shadertoy dialect) that
+  plays the movie in real time and loops with its duration. `tests/glsl_compile.js` compiles every
+  example; `tests/shader_test.js` renders each one in headless Chrome and compares with the JS engine;
+  `tests/shader_page.js` writes the standalone page for a script.
 
 ## Rendering Noise Etude
 

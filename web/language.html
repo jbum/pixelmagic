@@ -116,6 +116,21 @@ Case does not matter. <code>pi</code>, <code>pi2</code> (2π) and <code>e</code>
 <tr><td>rgb(r,g,b) hsv(h,s,v) triple(a,b,c)</td><td>make a colour</td></tr>
 </table>
 
+<h2 id="shader">Live shader</h2>
+<p>The <b>Live shader</b> tab compiles the script to a GLSL fragment shader and plays it on the GPU, looping every
+<code>duration</code> seconds, at whatever size the size boxes say; edits recompile as you type. <b>Save shader (HTML)</b>
+writes a page that plays the loop by itself, with the shader and any images inside it (space pauses, arrows step,
+<code>s</code> saves a frame, <code>o</code> toggles oversampling). <b>Save GLSL</b> writes the fragment shader alone, in
+Shadertoy's dialect (<code>mainImage</code>, <code>iTime</code>, <code>iResolution</code>, <code>iChannel0</code>…), so it can be pasted there
+(give its channels the script's images, nearest filtering, no vertical flip).</p>
+<p>The shader follows the renderer: layers, bounds, zoom, <code>min</code>/<code>max</code>, <code>wrap</code>, <code>cycle</code>,
+<code>oversample</code>, the blend modes, sampling of other sequences and images, noise, fractals and the rest. It differs in
+being 32-bit float where the renderer is double (the deep Mandelbrot zooms in the examples, with widths of a billionth,
+dissolve into noise on the GPU; shallow ones are fine), in time being continuous rather than stepping by frames, and in
+<code>?</code> giving a different random stream. A few things can't be done in a shader: sequences that sample each
+other in a cycle, more than four images, and iteration counts (<code>recurse</code>) above 4000. Scripts that use
+<code>fnoise</code>/<code>turb</code> under several sampled layers with oversampling can be heavy; untick <b>oversample</b> for four times the speed.</p>
+
 <h2>Notes</h2>
 <ul>
 <li>This is the renderer of QTS (2001–2003), the last version of Pixel Magic, ported from its C++ source;

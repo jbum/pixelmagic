@@ -1,8 +1,8 @@
-// A static server for build/web (node build/serve.js [port]); the Python one stalled Chrome.
+// A static server for build/web (node build/serve.js [port] [root]); the Python one stalled Chrome.
 const http = require("http"), fs = require("fs"), path = require("path");
-const root = path.join(__dirname, "web"), port = parseInt(process.argv[2] || "8766", 10);
+const root = path.resolve(process.argv[3] || path.join(__dirname, "web")), port = parseInt(process.argv[2] || "8766", 10);
 const types = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".mjs": "text/javascript", ".css": "text/css",
-  ".json": "application/json", ".wasm": "application/wasm", ".png": "image/png", ".jpg": "image/jpeg", ".mp4": "video/mp4", ".can": "text/plain" };
+  ".json": "application/json", ".wasm": "application/wasm", ".png": "image/png", ".jpg": "image/jpeg", ".mp4": "video/mp4", ".can": "text/plain", ".glsl": "text/plain" };
 http.createServer((req, res) => {
   let p = decodeURIComponent(req.url.split("?")[0]);
   if (p.endsWith("/")) p += "index.html";

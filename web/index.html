@@ -40,7 +40,11 @@
   </section>
 
   <section class="view">
-    <div class="canvasWrap"><canvas id="preview" width="256" height="256"></canvas></div>
+    <div class="tabs" role="tablist">
+      <button id="tabFrame" class="on" role="tab">Frame</button>
+      <button id="tabShader" role="tab" title="the script compiled to a GLSL shader, playing live on the GPU">Live shader</button>
+    </div>
+    <div class="canvasWrap"><canvas id="preview" width="256" height="256"></canvas><canvas id="glview" width="256" height="256" hidden></canvas></div>
     <div class="timeRow">
       <input type="range" id="time" min="0" max="1" step="0.0005" value="0" aria-label="time">
       <span id="timeText"></span>
@@ -50,10 +54,17 @@
       <label>size <input id="width" type="number" min="1" max="4096" placeholder="w"> × <input id="height" type="number" min="1" max="4096" placeholder="h">
         <button id="sizeReset" title="back to the script's fw/fh">↺</button></label>
     </div>
-    <div class="row">
+    <div class="row" id="frameButtons">
       <button id="savePng">Save frame (PNG)</button>
       <button id="movie" class="primary">Render movie…</button>
       <button id="movieCancel" hidden>Cancel</button>
+    </div>
+    <div class="row" id="shaderButtons" hidden>
+      <button id="shaderPlay" class="primary">Pause</button>
+      <label><input type="checkbox" id="shaderOversample" checked> oversample</label>
+      <button id="saveShaderHtml" title="a page that plays the loop, with the shader and images inside">Save shader (HTML)</button>
+      <button id="saveShaderGlsl" title="the fragment shader alone, in Shadertoy's dialect">Save GLSL</button>
+      <span id="shaderFps" class="dim"></span>
     </div>
     <div class="statusRow"><span id="status"></span><progress id="progress" max="1" value="0" hidden></progress></div>
   </section>
