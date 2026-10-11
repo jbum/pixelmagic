@@ -42,6 +42,13 @@ See README.md for the layout; this file is what isn't obvious from the code.
   node editor / GLSL emitter.
 
 ## Not done / ideas
+- **Open: the Noise Etude movie starts grey on jbum's iPad** (Safari and Chrome, both WebKit; first
+  ~4 s, mid-grey with the title dark, then right). Not the encode: x264 settings, keyframe spacing,
+  no B-frames, weightp=0, HEVC, Apple's own encoder all do it; the same files play white through
+  AVPlayer on the Mac over the same HTTPS path (probe: an AVPlayerItemVideoOutput script). jbum
+  suspects iPad dark mode; test page https://qts.jbum.com/vtest.html (build/web/vtest.html, not in
+  git) has synthetic white/black clips and a clip starting at 6 s to tell. `build/out/noise_etude_720_nw.mp4`
+  is a full weightp=0 render, unused.
 - **Backlog (jbum, 2026-10-11): a friendlier editor** — a node-based editor with a property panel,
   or a hierarchical list of the sequences, as a tab beside the XML text panel, and the default one.
 - Sampling semantics: a bare `$name` uses the sampling layer's raw x,y as 0..1 coords (the
