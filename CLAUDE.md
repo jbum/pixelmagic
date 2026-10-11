@@ -31,6 +31,16 @@ See README.md for the layout; this file is what isn't obvious from the code.
   them, a movie hands whole frames out and encodes in order (WebCodecs H.264 + vendored mp4-muxer,
   or PNGs in a stored zip).
 
+## JS engine (web/engine/) — the back pocket
+- A second renderer in plain JS: the same parser, expressions compiled to JS functions, same
+  sequence/renderer logic. `node tests/compare_js.js` checks it against native: 66/73 examples
+  bit-identical, 7 within one level (V8's Math agrees with musl's here). The site does **not** use
+  it: in Chrome (2026-10-11, jbum's M1) wasm was faster on most scripts (star 2×, fire 3×,
+  smokezoom 5×; JS won only on sun and spiral2), and JS is hopeless on deep-iteration fractals
+  (julia2 35 s vs 0.7 s). `web/bench.html?run` reruns the comparison. jbum: "if JS continues to
+  be slower, we don't need to waste time on it." Keep it for tests and as the parser for a
+  node editor / GLSL emitter.
+
 ## Not done / ideas
 - **Backlog (jbum, 2026-10-11): a friendlier editor** — a node-based editor with a property panel,
   or a hierarchical list of the sequences, as a tab beside the XML text panel, and the default one.
@@ -45,4 +55,4 @@ See README.md for the layout; this file is what isn't obvious from the code.
   sampling (`$a[x,y]`), image sampling and the fractal/noise functions would need shader versions.
 - The site has no social card yet beyond `assets/card.png` made by build_web.py (the sun example +
   title); jbum may want a nicer one.
-- The GitHub repo isn't created yet (About page doesn't link one).
+- GitHub: https://github.com/jbum/pixelmagic (public, created 2026-10-11).

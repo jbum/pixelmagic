@@ -17,7 +17,9 @@ into stills and movies. Live at **https://qts.jbum.com/**.
 - `examples/` — the sample scripts (`.can`) and images from the QTS archive. `orig/QTS/` — the
   original sources the port was made from, for reference.
 - `tests/compare_wasm.js` — renders every example natively and with `build/wasm-node/qts.js` and
-  requires identical bytes.
+  requires identical bytes. `tests/compare_js.js` does the same for `web/engine/`, a second,
+  pure-JavaScript renderer (kept for tests and tooling; the site renders with the wasm, which
+  benchmarked faster — `web/bench.html`).
 
 ## Rendering Noise Etude
 

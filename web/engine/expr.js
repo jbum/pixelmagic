@@ -429,7 +429,12 @@ export function compileExpr(source, seqNames) {
   const p = new Parser(source, seqNames);
   const tree = p.parse();
   const body = tree ? gen(tree, {}) : "0";
-  const code = `${PRELUDE}return function(V,F,S){ return ${body}; }`;
+  // mand(), julia(), mandq(), wnoise1/2() with no arguments: computed once per pixel
+  // before the expression runs (one of them, in the VM's order of precedence)
+  const f = p.flags;
+  const pre = f.hasMandel ? "F.mandel(V.x,V.y,V.recur);" : f.hasMandelQ ? "F.mandelq(V.x,V.y,V.p0,V.q0,V.recur);"
+            : f.hasJulia ? "F.julia(V.x,V.y,V.p0,V.q0,V.recur);" : f.hasWorley2 ? "F.worley2(V.x,V.y);" : "";
+  const code = `${PRELUDE}return function(V,F,S){ ${pre} return ${body}; }`;
   let fn;
   try { fn = new Function(code)(); }
   catch (e) { throw new ExprError("internal: " + e.message + " in " + body); }
