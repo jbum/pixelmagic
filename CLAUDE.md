@@ -1,6 +1,6 @@
 # QTS / Pixel Magic — working notes
 
-Owner: Jim Bumgardner (jbum). Started 2026-10-10. Live at https://qts.jbum.com/ (mibbles).
+Owner: Jim Bumgardner (jbum). Started 2026-10-10. Live at https://qts.jbum.com/.
 See README.md for the layout; this file is what isn't obvious from the code.
 
 ## Where things came from
@@ -14,8 +14,8 @@ See README.md for the layout; this file is what isn't obvious from the code.
 - Native: `make` → `./qts`. Wasm: `source ~/emsdk/emsdk_env.sh && build/build_wasm.sh web` (and
   `node` for tests). Site: `python3 build/build_web.py` (needs `./qts`, Pillow, ffmpeg; renders
   thumbnails; takes the movie from `build/out/noise_etude_720.mp4`), then `build/deploy_web.sh`
-  (rsync --delete to jbum@mibbles:qts.jbum.com/). Vhost: `/etc/apache2/sites-available/026-qts.conf`
-  (+ certbot's -le-ssl), logs `/var/log/apache2/qts/`.
+  (rsync --delete to `$DEPLOY_DEST` or the destination in `build/deploy.dest`;
+  server details are in the uncommitted `CLAUDE.local.md`).
 - `node tests/compare_wasm.js` after `build/build_wasm.sh node`: wasm and native must be
   byte-identical on every example (they are: 73/73).
 - Local testing: `node build/serve.js 8766` serves build/web. Don't use `python3 -m http.server`:
